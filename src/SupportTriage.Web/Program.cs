@@ -1,4 +1,5 @@
 using SupportTriage.Web.Components;
+using SupportTriage.Web.Services;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -6,7 +7,20 @@ var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddRazorComponents()
     .AddInteractiveServerComponents();
 
+// Launch the local Order MCP server (stdio transport) and connect to it once at startup.
+var mcpServerProjectPath = builder.Configuration["Mcp:ServerProjectPath"]
+    ?? Path.GetFullPath(Path.Combine(builder.Environment.ContentRootPath, "..", "SupportTriage.McpServer", "SupportTriage.McpServer.csproj"));
+var mcpToolProvider = await McpToolProvider.CreateAsync(mcpServerProjectPath);
+builder.Services.AddSingleton(mcpToolProvider);
+
 var app = builder.Build();
+
+app.Logger.LogInformation(
+    "Connected to Order MCP server. Discovered tools: {Tools}",
+    string.Join(", ", mcpToolProvider.Tools.Select(t => t.Name)));
+
+app.Lifetime.ApplicationStopping.Register(() =>
+    mcpToolProvider.DisposeAsync().AsTask().GetAwaiter().GetResult());
 
 // Configure the HTTP request pipeline.
 if (!app.Environment.IsDevelopment())
