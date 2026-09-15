@@ -12,6 +12,7 @@ var mcpServerProjectPath = builder.Configuration["Mcp:ServerProjectPath"]
     ?? Path.GetFullPath(Path.Combine(builder.Environment.ContentRootPath, "..", "SupportTriage.McpServer", "SupportTriage.McpServer.csproj"));
 var mcpToolProvider = await McpToolProvider.CreateAsync(mcpServerProjectPath);
 builder.Services.AddSingleton(mcpToolProvider);
+builder.Services.AddScoped<SupportAgentService>();
 
 var app = builder.Build();
 
