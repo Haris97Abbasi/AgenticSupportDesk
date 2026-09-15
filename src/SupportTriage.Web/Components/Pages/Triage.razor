@@ -1,0 +1,170 @@
+@page "/"
+@rendermode InteractiveServer
+@using SupportTriage.Web.Models
+@using SupportTriage.Web.Services
+@inject SupportAgentService SupportAgentService
+
+<PageTitle>AI Support Triage Desk</PageTitle>
+
+<h1>AI Support Triage Desk</h1>
+
+@if (_errorMessage is not null)
+{
+    <div class="alert alert-danger" role="alert">@_errorMessage</div>
+}
+
+<div class="chat-window">
+    @foreach (var message in _messages)
+    {
+        <div class="chat-bubble @(message.Role == "user" ? "chat-bubble-user" : "chat-bubble-agent")">
+            <div class="chat-bubble-role">@(message.Role == "user" ? "You" : "Agent")</div>
+            <div class="chat-bubble-text">@message.Text</div>
+        </div>
+    }
+    @if (_isSending)
+    {
+        <div class="chat-bubble chat-bubble-agent">
+            <div class="chat-bubble-role">Agent</div>
+            <div class="chat-bubble-text"><em>Thinking…</em></div>
+        </div>
+    }
+</div>
+
+<div class="chat-input-row">
+    <input type="text"
+           class="form-control"
+           placeholder="Describe the customer's issue..."
+           @bind="_userInput"
+           @bind:event="oninput"
+           @onkeydown="OnInputKeyDown"
+           disabled="@_isSending" />
+    <button class="btn btn-primary" @onclick="SendAsync" disabled="@(_isSending || string.IsNullOrWhiteSpace(_userInput))">
+        Send
+    </button>
+</div>
+
+<div class="analyze-row">
+    <button class="btn btn-outline-secondary" @onclick="AnalyzeCaseAsync" disabled="@(_isAnalyzing || _isSending || _messages.Count == 0)">
+        @(_isAnalyzing ? "Analyzing…" : "Analyze Case")
+    </button>
+</div>
+
+@if (_caseResult is not null)
+{
+    <div class="case-result-card">
+        <h2>Case Summary</h2>
+
+        <div class="case-field">
+            <div class="case-field-label">Summary</div>
+            <div class="case-field-value">@_caseResult.Summary</div>
+        </div>
+
+        <div class="case-field">
+            <div class="case-field-label">Category</div>
+            <div class="case-field-value">@_caseResult.Category</div>
+        </div>
+
+        <div class="case-field">
+            <div class="case-field-label">Priority</div>
+            <span class="badge @PriorityBadgeClass(_caseResult.Priority)">@_caseResult.Priority</span>
+        </div>
+
+        <div class="case-field">
+            <div class="case-field-label">Recommended Action</div>
+            <div class="case-field-value">@_caseResult.RecommendedAction</div>
+        </div>
+
+        <div class="case-field">
+            <div class="case-field-label">Human Review</div>
+            @if (_caseResult.NeedsHumanReview)
+            {
+                <span class="badge bg-danger">Needs human review</span>
+            }
+            else
+            {
+                <span class="badge bg-success">No human review needed</span>
+            }
+        </div>
+    </div>
+}
+
+@code {
+    private const string AnalysisPrompt =
+        "Analyze the support conversation so far and produce a structured case summary, " +
+        "including category, priority, recommended action, and whether human review is needed.";
+
+    private readonly List<(string Role, string Text)> _messages = [];
+    private string _userInput = "";
+    private bool _isSending;
+    private bool _isAnalyzing;
+    private string? _errorMessage;
+    private SupportCaseResult? _caseResult;
+
+    private async Task OnInputKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter" && !_isSending && !string.IsNullOrWhiteSpace(_userInput))
+        {
+            await SendAsync();
+        }
+    }
+
+    private async Task SendAsync()
+    {
+        var userMessage = _userInput.Trim();
+        if (userMessage.Length == 0 || _isSending)
+        {
+            return;
+        }
+
+        _messages.Add(("user", userMessage));
+        _userInput = "";
+        _isSending = true;
+        _errorMessage = null;
+
+        try
+        {
+            var reply = await SupportAgentService.SendMessageAsync(userMessage);
+            _messages.Add(("agent", reply));
+        }
+        catch (Exception ex)
+        {
+            _errorMessage = $"The agent couldn't respond: {ex.Message}";
+        }
+        finally
+        {
+            _isSending = false;
+        }
+    }
+
+    private async Task AnalyzeCaseAsync()
+    {
+        if (_isAnalyzing || _messages.Count == 0)
+        {
+            return;
+        }
+
+        _isAnalyzing = true;
+        _errorMessage = null;
+
+        try
+        {
+            _caseResult = await SupportAgentService.AnalyzeCaseAsync(AnalysisPrompt);
+        }
+        catch (Exception ex)
+        {
+            _errorMessage = $"The agent couldn't analyze the case: {ex.Message}";
+        }
+        finally
+        {
+            _isAnalyzing = false;
+        }
+    }
+
+    private static string PriorityBadgeClass(string priority) => priority.ToLowerInvariant() switch
+    {
+        "high" or "urgent" or "critical" => "bg-danger",
+        "medium" or "normal" => "bg-warning text-dark",
+        "low" => "bg-success",
+        _ => "bg-secondary"
+    };
+}
