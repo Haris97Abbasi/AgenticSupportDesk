@@ -1,0 +1,6 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/SupportTriage.McpServer/SupportTriage.McpServer.csproj" />
+    <Project Path="src/SupportTriage.Web/SupportTriage.Web.csproj" />
+  </Folder>
+</Solution>
